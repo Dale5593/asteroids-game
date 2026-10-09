@@ -498,6 +498,9 @@
         popup = window.open(location.href, 'asteroids',
           'popup=yes,width=' + w + ',height=' + h + ',left=0,top=0');
         if (!popup) popup = window.open(location.href, '_blank'); // fall back to a tab
+        // Bring the game window to the front so the keyboard goes to it
+        // (otherwise the arrow keys keep going to the Google Site behind it)
+        if (popup) popup.focus();
       } catch (err) {}
       if (!popup) {
         document.getElementById('gearMsg').classList.add('show');
@@ -516,6 +519,12 @@
     loadGame();
   }
   // Wait for an arrow key or the space bar before starting
+  // In the game window, grab keyboard focus as soon as it loads
+  if (!framed) {
+    try { window.focus(); } catch (err) {}
+    window.addEventListener('load', function () { try { window.focus(); } catch (err) {} });
+  }
+
   var START_KEYS = { 37: 1, 38: 1, 39: 1, 40: 1, 32: 1 };
   document.addEventListener('keydown', function (e) {
     if (framed || started) return;
