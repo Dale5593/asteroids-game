@@ -267,13 +267,14 @@
 
     var last = performance.now(), raf;
     function frame(now) {
-      // If the game was quit with Esc, clean up and start a fresh one
+      // If the game was quit with Esc, clean up and stay stopped: back to the
+      // plain screenshot until an arrow key or space is pressed again
       if (!player.gameContainer || !player.gameContainer.parentNode) {
         cancelAnimationFrame(raf);
         canvas.remove();
         window.removeEventListener('resize', resize);
         document.removeEventListener('keydown', onKey);
-        setTimeout(loadGame, 1000);
+        stopPlaying();
         return;
       }
       raf = requestAnimationFrame(frame);
@@ -509,7 +510,15 @@
     }
   });
 
-  // Start right away (except inside the Google Sites box, which just launches the pop-up)
+  // After quitting with Esc: show the undamaged screenshot and wait for a start key
+  function stopPlaying() {
+    started = false;
+    document.documentElement.classList.remove('playing');
+    document.getElementById('stage').classList.remove('playing');
+    if (shot && shot.repaint) shot.repaint();
+  }
+
+  // Start the game (not used inside the Google Sites box, which just launches the pop-up)
   function startPlaying() {
     if (started) return;
     started = true;
