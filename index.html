@@ -45,9 +45,30 @@
     padding: 3px 8px; border-radius: 4px;
   }
   #shotCredit a { color: #fff; }
+
+  /* Inside the Google Sites box: just a gear on a transparent background */
+  #gear, #gearMsg { display: none; }
+  html.embedded, html.embedded body { background: transparent; }
+  html.embedded #stage { display: none; }
+  html.embedded #gear {
+    display: flex; align-items: center; justify-content: center;
+    height: 100vh; font-size: 48px; color: #666;
+    cursor: pointer; user-select: none;
+  }
+  html.embedded #gear:hover { color: #222; }
+  html.embedded #gearMsg.show {
+    display: block; position: fixed; left: 0; right: 0; bottom: 4px;
+    font: 11px Arial, sans-serif; color: #c00; text-align: center;
+  }
 </style>
+<script>
+  // Mark the page as embedded right away so the gear shows without a flash
+  if (window.self !== window.top) document.documentElement.classList.add('embedded');
+</script>
 </head>
 <body>
+<div id="gear" title="Click me">&#9881;&#xFE0E;</div>
+<div id="gearMsg">Pop-up blocked. Allow pop-ups for this site, then click again.</div>
 <div id="shotHint">🚀 Click anywhere to destroy this page
   <small>Arrows/WASD to fly · Space to shoot · protect your cursor from the asteroids</small>
 </div>
@@ -102,6 +123,33 @@
     }
     resize();
     window.addEventListener('resize', resize);
+
+    // Bigger, glowing white bullets with a short streak (the original
+    // game draws tiny black dots)
+    player.ctx.drawBullets = function (bullets) {
+      this.save();
+      this.lineCap = 'round';
+      for (var i = 0; i < bullets.length; i++) {
+        var b = bullets[i], x = b.pos.x, y = b.pos.y;
+        var dl = Math.hypot(b.dir.x, b.dir.y) || 1;
+        var tx = x - b.dir.x / dl * 14, ty = y - b.dir.y / dl * 14;
+        // dark outline so they show on white backgrounds too
+        this.shadowBlur = 0;
+        this.strokeStyle = 'rgba(0,0,0,0.6)';
+        this.lineWidth = 7;
+        this.beginPath(); this.moveTo(tx, ty); this.lineTo(x, y); this.stroke();
+        // white streak with a glow
+        this.shadowColor = 'rgba(255,255,255,0.9)';
+        this.shadowBlur = 10;
+        this.strokeStyle = '#fff';
+        this.lineWidth = 4;
+        this.beginPath(); this.moveTo(tx, ty); this.lineTo(x, y); this.stroke();
+        // bright round head
+        this.fillStyle = '#fff';
+        this.beginPath(); this.arc(x, y, 3.5, 0, Math.PI * 2); this.fill();
+      }
+      this.restore();
+    };
 
     // The asteroids' target: the ship you fly
     var ship = player.pos;
@@ -370,9 +418,6 @@
   // ---------------------------------------------------------------
   // When embedded (e.g. on Google Sites), the box only launches the pop-up
   var framed = window.self !== window.top;
-  if (framed) {
-    document.getElementById('hint').textContent = '🚀 Click anywhere to play full screen';
-  }
 
   var shot = null;
   if (!framed) {
@@ -443,8 +488,7 @@
         if (!popup) popup = window.open(location.href, '_blank'); // fall back to a tab
       } catch (err) {}
       if (!popup) {
-        document.getElementById('hint').textContent =
-          '⚠️ The pop-up was blocked. Allow pop-ups for this site, then click again.';
+        document.getElementById('gearMsg').classList.add('show');
       }
       return;
     }
