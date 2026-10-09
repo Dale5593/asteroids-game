@@ -69,13 +69,10 @@
 <body>
 <div id="gear" title="Click me">&#9881;&#xFE0E;</div>
 <div id="gearMsg">Pop-up blocked. Allow pop-ups for this site, then click again.</div>
-<div id="shotHint">🚀 Click anywhere to destroy this page
-  <small>Arrows/WASD to fly · Space to shoot · protect your cursor from the asteroids</small>
-</div>
 <div id="shotCredit">Asteroids game by <a href="http://kickassapp.com" target="_blank">Kick Ass / Rootof Creations</a></div>
 <div id="stage">
   <h1>Destroy This Page!</h1>
-  <p id="hint" style="font-size: 20px;">🚀 Click anywhere to start</p>
+  <p id="hint" style="font-size: 20px;">🚀 Press an arrow key or the space bar to start</p>
   <p>Fly with the arrow keys (or WASD) and shoot with space.</p>
   <p>Asteroids will hunt your ship. Shoot them before they reach it! One hit and you're dead, and they keep coming faster and in bigger groups.</p>
   <p>After you die, press any key to play again. Press B to highlight what you can blow up.</p>
@@ -422,20 +419,6 @@
         ctx.fillStyle = '#d22';
         ctx.fillText(warn, W / 2, 78);
       }
-
-      // Opening tip
-      if (!gameOver && elapsed < 4) {
-        ctx.globalAlpha = Math.min(1, 4 - elapsed);
-        ctx.textAlign = 'center';
-        ctx.font = 'bold 26px Arial, sans-serif';
-        var tip = 'Arrows/WASD to fly, Space to shoot. Don’t let the asteroids hit your ship!';
-        var tw = ctx.measureText(tip).width;
-        ctx.fillStyle = 'rgba(255,255,255,0.85)';
-        ctx.fillRect(W / 2 - tw / 2 - 14, 16, tw + 28, 42);
-        ctx.fillStyle = '#d22';
-        ctx.fillText(tip, W / 2, 24);
-        ctx.globalAlpha = 1;
-      }
     }
 
     raf = requestAnimationFrame(frame);
@@ -550,7 +533,16 @@
     document.getElementById('hint').textContent = 'Go!';
     loadGame();
   }
-  if (!framed) startPlaying();
+  // Wait for an arrow key or the space bar before starting
+  // (that same key press also switches to full screen)
+  var START_KEYS = { 37: 1, 38: 1, 39: 1, 40: 1, 32: 1 };
+  document.addEventListener('keydown', function (e) {
+    if (framed || started) return;
+    if (START_KEYS[e.keyCode] || /^(Arrow(Up|Down|Left|Right)| |Spacebar)$/.test(e.key)) {
+      e.preventDefault(); // don't scroll the page
+      startPlaying();
+    }
+  });
 </script>
 </body>
 </html>
