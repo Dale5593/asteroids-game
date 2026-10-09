@@ -187,6 +187,35 @@
       if (shot && shot.repaint) shot.repaint();
     }
 
+    // Better controls on top of the original game's physics:
+    //  - holding forward while turning swings your momentum around to
+    //    follow the nose, so you actually change direction
+    //  - down arrow / S thrusts backwards (and works as a brake)
+    var TURN_GRIP = 6;        // how quickly momentum follows the nose (higher = tighter turns)
+    var REVERSE_ACC = 600;    // backwards thrust strength
+    var MAX_REVERSE = 300;    // top speed going backwards
+    function flightAssist(dt) {
+      var k = player.keysPressed, v = player.vel, d = player.dir;
+      var dl = Math.hypot(d.x, d.y) || 1, nx = d.x / dl, ny = d.y / dl;
+      var forward = k[38] || k[87];   // up arrow or W
+      var back = k[40] || k[83];      // down arrow or S
+      if (forward && !back) {
+        var sp = Math.hypot(v.x, v.y), f = Math.min(1, TURN_GRIP * dt);
+        v.x += (nx * sp - v.x) * f;
+        v.y += (ny * sp - v.y) * f;
+      }
+      if (back && !forward) {
+        v.x -= nx * REVERSE_ACC * dt;
+        v.y -= ny * REVERSE_ACC * dt;
+        // cap speed when moving backwards (relative to where the nose points)
+        var along = v.x * nx + v.y * ny;
+        if (along < -MAX_REVERSE) {
+          v.x -= nx * (along + MAX_REVERSE);
+          v.y -= ny * (along + MAX_REVERSE);
+        }
+      }
+    }
+
     // When dead, any key starts a new round
     function onKey() {
       if (gameOver && deadFor >= KEY_DELAY) reset();
@@ -261,6 +290,7 @@
         player.vel.x = 0; player.vel.y = 0;
         deadFor += dt;
       } else {
+        flightAssist(dt);
         elapsed += dt;
         waveFlash = Math.max(0, waveFlash - dt);
         // It never stops, but ramps up gently: rocks get a bit faster,
