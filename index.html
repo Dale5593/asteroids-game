@@ -15,9 +15,42 @@
     cursor: pointer;
   }
   #stage.playing { cursor: default; }
+
+  /* Screenshot mode: used when screenshot.png is in the repo */
+  #shotHint, #shotCredit { display: none; }
+  html.shotmode, html.shotmode body {
+    cursor: pointer;
+    background-color: #141a2b; /* "outer space" revealed behind the holes */
+    background-image:
+      radial-gradient(1px 1px at 20px 30px, #fff, transparent),
+      radial-gradient(1px 1px at 90px 120px, #cfd8ff, transparent),
+      radial-gradient(1.5px 1.5px at 160px 60px, #fff, transparent),
+      radial-gradient(1px 1px at 210px 170px, #fff, transparent);
+    background-size: 240px 200px;
+  }
+  html.shotmode #stage { display: none; }
+  html.shotmode #shotHint {
+    display: block; position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+    z-index: 5; padding: 12px 24px; border-radius: 999px;
+    background: rgba(0,0,0,0.75); color: #fff; font: bold 20px Arial, sans-serif;
+    text-align: center; white-space: nowrap;
+  }
+  html.shotmode #shotHint small { display: block; font-weight: normal; font-size: 13px; opacity: 0.85; margin-top: 4px; }
+  html.shotmode.playing #shotHint { display: none; }
+  html.shotmode.playing, html.shotmode.playing body { cursor: default; }
+  html.shotmode #shotCredit {
+    display: block; position: fixed; bottom: 8px; left: 10px; z-index: 5;
+    font: 11px Arial, sans-serif; color: #fff; background: rgba(0,0,0,0.55);
+    padding: 3px 8px; border-radius: 4px;
+  }
+  #shotCredit a { color: #fff; }
 </style>
 </head>
 <body>
+<div id="shotHint">🚀 Click anywhere to destroy this page
+  <small>Arrows/WASD to fly · Space to shoot · protect your cursor from the asteroids</small>
+</div>
+<div id="shotCredit">Asteroids game by <a href="http://kickassapp.com" target="_blank">Kick Ass / Rootof Creations</a></div>
 <div id="stage">
   <h1>Destroy This Page!</h1>
   <p id="hint" style="font-size: 20px;">🚀 Click anywhere to start</p>
@@ -201,6 +234,23 @@
         }
       }
 
+      // Bullets that didn't hit an asteroid blast holes in the screenshot
+      if (shot) {
+        var bl = player.bullets || [], nowMs = Date.now();
+        for (var m = 0; m < bl.length; m++) {
+          var bb = bl[m];
+          // skip used bullets and ones still right next to the ship's nose
+          if (bb._usedUp || nowMs - bb.cameAlive < 40) continue;
+          var color = hitScreenshot(bb.pos.x, bb.pos.y);
+          if (color) {
+            bb._usedUp = true;
+            bb.cameAlive = -1e15; // makes the game remove this bullet on its next tick
+            burst(bb.pos.x, bb.pos.y, 14, color);
+            if (!gameOver) score += 1;
+          }
+        }
+      }
+
       // Explosion bits
       for (var p = bits.length - 1; p >= 0; p--) {
         var q = bits[p];
@@ -253,7 +303,9 @@
         ctx.stroke();
       }
 
-      // Lives and score
+      // Lives and score (on a light panel so they show over anything)
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.fillRect(8, 8, 170, 64);
       ctx.font = 'bold 20px Arial, sans-serif';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
@@ -269,8 +321,12 @@
         ctx.globalAlpha = Math.min(1, 4 - elapsed);
         ctx.textAlign = 'center';
         ctx.font = 'bold 26px Arial, sans-serif';
+        var tip = 'Protect your cursor! Shoot the asteroids before they reach it.';
+        var tw = ctx.measureText(tip).width;
+        ctx.fillStyle = 'rgba(255,255,255,0.85)';
+        ctx.fillRect(W / 2 - tw / 2 - 14, 16, tw + 28, 42);
         ctx.fillStyle = '#d22';
-        ctx.fillText('Protect your cursor! Shoot the asteroids before they reach it.', W / 2, 24);
+        ctx.fillText(tip, W / 2, 24);
         ctx.globalAlpha = 1;
       }
 
@@ -299,6 +355,66 @@
     document.getElementById('hint').textContent = '🚀 Click anywhere to play full screen';
   }
 
+  // ---------------------------------------------------------------
+  // Screenshot mode: if screenshot.png is in the repo, show it full
+  // screen and let bullets blast holes in it
+  // ---------------------------------------------------------------
+  var shot = null;
+  if (!(framed && !fsAllowed)) {
+    var shotImg = new Image();
+    shotImg.onload = function () { setupScreenshot(shotImg); };
+    shotImg.src = 'screenshot.png?v=' + Date.now(); // always get the latest upload
+  }
+
+  function setupScreenshot(img) {
+    document.documentElement.classList.add('shotmode');
+    var c = document.createElement('canvas');
+    c.className = 'ASTEROIDSYEAH'; // the game ignores its own layers
+    c.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:1';
+    document.body.appendChild(c);
+    var cx = c.getContext('2d', { willReadFrequently: true });
+    shot = { canvas: c, ctx: cx, dpr: 1 };
+
+    function paint() {
+      var dpr = window.devicePixelRatio || 1, W = window.innerWidth, H = window.innerHeight;
+      c.width = Math.round(W * dpr); c.height = Math.round(H * dpr);
+      shot.dpr = dpr;
+      // Fit to the window width (like a real web page); cover the height if it's short
+      var scale = W / img.width;
+      if (img.height * scale < H) scale = H / img.height;
+      var dw = img.width * scale, dh = img.height * scale;
+      cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      cx.clearRect(0, 0, W, H);
+      cx.drawImage(img, (W - dw) / 2, 0, dw, dh);
+    }
+    paint();
+    window.addEventListener('resize', paint);
+  }
+
+  // Blast a ragged hole in the screenshot; returns the color that was hit, or null
+  function hitScreenshot(x, y) {
+    if (!shot) return null;
+    var d = shot.dpr, px = Math.floor(x * d), py = Math.floor(y * d);
+    if (px < 0 || py < 0 || px >= shot.canvas.width || py >= shot.canvas.height) return null;
+    var p = shot.ctx.getImageData(px, py, 1, 1).data;
+    if (p[3] < 20) return null; // already a hole here
+    var cx = shot.ctx;
+    cx.save();
+    cx.setTransform(d, 0, 0, d, 0, 0);
+    cx.globalCompositeOperation = 'destination-out';
+    cx.beginPath();
+    var n = 12, r = 14 + Math.random() * 8;
+    for (var i = 0; i < n; i++) {
+      var a = i / n * Math.PI * 2, rr = r * (0.6 + Math.random() * 0.5);
+      var hx = x + Math.cos(a) * rr, hy = y + Math.sin(a) * rr;
+      if (i === 0) cx.moveTo(hx, hy); else cx.lineTo(hx, hy);
+    }
+    cx.closePath();
+    cx.fill();
+    cx.restore();
+    return 'rgb(' + p[0] + ',' + p[1] + ',' + p[2] + ')';
+  }
+
   document.addEventListener('click', function (e) {
     if (started || e.target.closest('a')) return;
 
@@ -313,6 +429,7 @@
     }
 
     started = true;
+    document.documentElement.classList.add('playing');
     document.getElementById('stage').classList.add('playing');
     document.getElementById('hint').textContent = 'Go!';
 
