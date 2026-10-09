@@ -37,6 +37,10 @@ jobs:
             const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
             await page.goto(process.env.SITE_URL, { waitUntil: 'load', timeout: 60000 });
             await page.waitForTimeout(5000); // let images and embeds finish loading
+            // Don't save a Google sign-in page by mistake if the site isn't public
+            if (page.url().includes('accounts.google.com')) {
+              throw new Error('The site asked for a sign-in. Make it public in Google Sites publish settings.');
+            }
             await page.screenshot({ path: 'screenshot.png' });
             await browser.close();
           })().catch(e => { console.error(e); process.exit(1); });
