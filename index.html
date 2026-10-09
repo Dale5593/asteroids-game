@@ -491,8 +491,7 @@
   document.addEventListener('click', function (e) {
     if (e.target.closest('a')) return;
 
-    // Embedded (e.g. Google Sites): always open a pop-up window covering
-    // the whole screen, where the game can go truly full screen
+    // Embedded (e.g. Google Sites): open a pop-up window covering the screen
     if (framed) {
       var w = screen.availWidth, h = screen.availHeight, popup = null;
       try {
@@ -505,23 +504,6 @@
       }
       return;
     }
-
-    goFullScreen();
-  });
-
-  // Browsers only allow full screen after a key press or click,
-  // so the first one switches to full screen
-  var askedFullScreen = false;
-  function goFullScreen() {
-    if (framed || askedFullScreen) return;
-    if (document.fullscreenElement || document.webkitFullscreenElement) return;
-    askedFullScreen = true;
-    var el = document.documentElement;
-    var req = el.requestFullscreen || el.webkitRequestFullscreen;
-    if (req) { try { var p = req.call(el); if (p && p.catch) p.catch(function () {}); } catch (err) {} }
-  }
-  document.addEventListener('keydown', function (e) {
-    if (e.key !== 'Escape') goFullScreen();
   });
 
   // Start right away (except inside the Google Sites box, which just launches the pop-up)
@@ -534,7 +516,6 @@
     loadGame();
   }
   // Wait for an arrow key or the space bar before starting
-  // (that same key press also switches to full screen)
   var START_KEYS = { 37: 1, 38: 1, 39: 1, 40: 1, 32: 1 };
   document.addEventListener('keydown', function (e) {
     if (framed || started) return;
