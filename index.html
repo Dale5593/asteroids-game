@@ -132,21 +132,18 @@
       for (var i = 0; i < bullets.length; i++) {
         var b = bullets[i], x = b.pos.x, y = b.pos.y;
         var dl = Math.hypot(b.dir.x, b.dir.y) || 1;
-        var tx = x - b.dir.x / dl * 14, ty = y - b.dir.y / dl * 14;
-        // dark outline so they show on white backgrounds too
-        this.shadowBlur = 0;
-        this.strokeStyle = 'rgba(0,0,0,0.6)';
-        this.lineWidth = 7;
-        this.beginPath(); this.moveTo(tx, ty); this.lineTo(x, y); this.stroke();
-        // white streak with a glow
-        this.shadowColor = 'rgba(255,255,255,0.9)';
-        this.shadowBlur = 10;
+        var tx = x - b.dir.x / dl * 20, ty = y - b.dir.y / dl * 20;
+        // bright white streak with a strong white glow (drawn twice for extra brightness)
+        this.shadowColor = '#fff';
+        this.shadowBlur = 16;
         this.strokeStyle = '#fff';
-        this.lineWidth = 4;
-        this.beginPath(); this.moveTo(tx, ty); this.lineTo(x, y); this.stroke();
+        this.lineWidth = 5;
+        for (var k = 0; k < 2; k++) {
+          this.beginPath(); this.moveTo(tx, ty); this.lineTo(x, y); this.stroke();
+        }
         // bright round head
         this.fillStyle = '#fff';
-        this.beginPath(); this.arc(x, y, 3.5, 0, Math.PI * 2); this.fill();
+        this.beginPath(); this.arc(x, y, 5, 0, Math.PI * 2); this.fill();
       }
       this.restore();
     };
@@ -307,12 +304,18 @@
           var bb = bl[m];
           // skip used bullets and ones still right next to the ship's nose
           if (bb._usedUp || nowMs - bb.cameAlive < 40) continue;
+          // each bullet punches up to 3 holes, spaced apart, so you can see it fly
+          if (bb._lastHole && Math.hypot(bb.pos.x - bb._lastHole.x, bb.pos.y - bb._lastHole.y) < 60) continue;
           var color = hitScreenshot(bb.pos.x, bb.pos.y);
           if (color) {
-            bb._usedUp = true;
-            bb.cameAlive = -1e15; // makes the game remove this bullet on its next tick
+            bb._holes = (bb._holes || 0) + 1;
+            bb._lastHole = { x: bb.pos.x, y: bb.pos.y };
             burst(bb.pos.x, bb.pos.y, 14, color);
             if (!gameOver) score += 1;
+            if (bb._holes >= 3) {
+              bb._usedUp = true;
+              bb.cameAlive = -1e15; // makes the game remove this bullet on its next tick
+            }
           }
         }
       }
