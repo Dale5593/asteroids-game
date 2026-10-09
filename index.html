@@ -56,7 +56,7 @@
   <p id="hint" style="font-size: 20px;">🚀 Click anywhere to start</p>
   <p>Fly with the arrow keys (or WASD) and shoot with space.</p>
   <p>Asteroids will hunt your mouse cursor. Shoot them before they reach it! One hit and you're dead, and they keep coming faster and in bigger groups.</p>
-  <p>Press B to highlight what you can blow up. Press Esc to exit full screen.</p>
+  <p>Press B to highlight what you can blow up. Press Esc to quit.</p>
 
   <h2>Target practice</h2>
   <p>Every word and heading on this page is fair game.</p>
@@ -363,24 +363,14 @@
     raf = requestAnimationFrame(frame);
   }
 
-  var framed = window.self !== window.top;
-  var fsAllowed = document.fullscreenEnabled || document.webkitFullscreenEnabled;
-
-  // Show the right hint when embedded somewhere that blocks full screen
-  if (framed && !fsAllowed) {
-    document.getElementById('hint').textContent = '🚀 Click anywhere to play full screen';
-  }
-
   // ---------------------------------------------------------------
-  // Screenshot mode: if screenshot.png is in the repo, show it full
-  // screen and let bullets blast holes in it
+  // Screenshot mode: if screenshot.png is in the repo, show it
+  // and let bullets blast holes in it
   // ---------------------------------------------------------------
   var shot = null;
-  if (!(framed && !fsAllowed)) {
-    var shotImg = new Image();
-    shotImg.onload = function () { setupScreenshot(shotImg); };
-    shotImg.src = 'screenshot.png?v=' + Date.now(); // always get the latest upload
-  }
+  var shotImg = new Image();
+  shotImg.onload = function () { setupScreenshot(shotImg); };
+  shotImg.src = 'screenshot.png?v=' + Date.now(); // always get the latest upload
 
   function setupScreenshot(img) {
     document.documentElement.classList.add('shotmode');
@@ -434,33 +424,11 @@
   document.addEventListener('click', function (e) {
     if (started || e.target.closest('a')) return;
 
-    // Embedded (e.g. Google Sites) and full screen is blocked:
-    // open a pop-up window covering the whole screen instead
-    if (framed && !fsAllowed) {
-      var w = screen.availWidth, h = screen.availHeight;
-      var popup = window.open(location.href, 'asteroids',
-        'popup=yes,width=' + w + ',height=' + h + ',left=0,top=0');
-      if (!popup) window.open(location.href, '_blank'); // pop-up blocked: fall back to a tab
-      return;
-    }
-
+    // Start the game right here, no pop-up and no full screen
     started = true;
     document.documentElement.classList.add('playing');
     document.getElementById('stage').classList.add('playing');
     document.getElementById('hint').textContent = 'Go!';
-
-    var el = document.documentElement;
-    var req = el.requestFullscreen || el.webkitRequestFullscreen;
-    if (req) {
-      try {
-        var p = req.call(el);
-        if (p && p.then) {
-          // Load the game once full screen is active so it fills the screen
-          p.then(function () { setTimeout(loadGame, 150); }, loadGame);
-          return;
-        }
-      } catch (err) {}
-    }
     loadGame();
   });
 </script>
