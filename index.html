@@ -37,7 +37,8 @@
   }
   html.shotmode #shotHint small { display: block; font-weight: normal; font-size: 13px; opacity: 0.85; margin-top: 4px; }
   html.shotmode.playing #shotHint { display: none; }
-  html.shotmode.playing, html.shotmode.playing body { cursor: default; }
+  /* No mouse pointer while playing: you fly the ship with the keyboard */
+  html.playing, html.playing body, html.playing canvas, html.playing #stage { cursor: none !important; }
   html.shotmode #shotCredit {
     display: block; position: fixed; bottom: 8px; left: 10px; z-index: 5;
     font: 11px Arial, sans-serif; color: #fff; background: rgba(0,0,0,0.55);
@@ -55,8 +56,8 @@
   <h1>Destroy This Page!</h1>
   <p id="hint" style="font-size: 20px;">🚀 Click anywhere to start</p>
   <p>Fly with the arrow keys (or WASD) and shoot with space.</p>
-  <p>Asteroids will hunt your mouse cursor. Shoot them before they reach it! One hit and you're dead, and they keep coming faster and in bigger groups.</p>
-  <p>Press B to highlight what you can blow up. Press Esc to exit full screen.</p>
+  <p>Asteroids will hunt your ship. Shoot them before they reach it! One hit and you're dead, and they keep coming faster and in bigger groups.</p>
+  <p>The game restarts by itself after you die. Press B to highlight what you can blow up.</p>
 
   <h2>Target practice</h2>
   <p>Every word and heading on this page is fair game.</p>
@@ -78,7 +79,7 @@
   }
 
   // ---------------------------------------------------------------
-  // Add-on: asteroids that hunt the mouse cursor unless you shoot them
+  // Add-on: asteroids that hunt your ship unless you shoot them
   // (an addition on top of the original Kick Ass Asteroids game)
   // ---------------------------------------------------------------
   function startCursorAsteroids() {
@@ -102,9 +103,10 @@
     resize();
     window.addEventListener('resize', resize);
 
-    var mouse = { x: W / 2, y: H / 2 };
-    function onMove(e) { mouse.x = e.clientX; mouse.y = e.clientY; }
-    document.addEventListener('mousemove', onMove);
+    // The asteroids' target: the ship you fly
+    var ship = player.pos;
+    var SHIP_RADIUS = 12;
+    var RESTART_DELAY = 3; // seconds between dying and the next round
 
     // Big, medium, small: radius, top speed, points
     var SIZES = [
@@ -114,14 +116,27 @@
     ];
     var MAX_ROCKS = 120; // safety limit so slower computers don't grind to a halt
 
-    var rocks, bits, score, elapsed, nextSpawn, gameOver, perWave, waveFlash;
+    var rocks, bits = [], score, elapsed, nextSpawn, gameOver, perWave, waveFlash, restartIn;
     function reset() {
-      rocks = []; bits = [];
+      rocks = [];
       score = 0; elapsed = 0;
       nextSpawn = 1.5; gameOver = false;
-      perWave = 1; waveFlash = 0;
+      perWave = 1; waveFlash = 0; restartIn = 0;
+      // Put the ship back in the middle, standing still, and show it again
+      player.pos.x = W / 2; player.pos.y = H / 2;
+      player.vel.x = 0; player.vel.y = 0;
+      player.canvas.style.visibility = 'visible';
     }
     reset();
+
+    function die() {
+      gameOver = true;
+      restartIn = RESTART_DELAY;
+      burst(ship.x, ship.y, 80, '#d22');
+      burst(ship.x, ship.y, 40, '#f90');
+      for (var k = rocks.length - 1; k >= 0; k--) breakRock(k, false);
+      player.canvas.style.visibility = 'hidden'; // the ship is destroyed
+    }
 
     function fmtTime(s) {
       s = Math.floor(s);
@@ -141,7 +156,7 @@
       else if (side === 1) { x = W + r; y = Math.random() * H; }
       else if (side === 2) { x = Math.random() * W; y = H + r; }
       else { x = -r; y = Math.random() * H; }
-      var dx = mouse.x - x, dy = mouse.y - y, d = Math.hypot(dx, dy) || 1;
+      var dx = ship.x - x, dy = ship.y - y, d = Math.hypot(dx, dy) || 1;
       var v = SIZES[0].speed * 0.5;
       rocks.push(makeRock(0, x, y, dx / d * v, dy / d * v));
     }
@@ -169,27 +184,28 @@
       }
     }
 
-    function onKey(e) {
-      if (gameOver && (e.key === 'Enter' || e.keyCode === 13)) reset();
-    }
-    document.addEventListener('keydown', onKey);
-
     var last = performance.now(), raf;
     function frame(now) {
-      // Stop when the player quits the game with Esc
+      // If the game was quit with Esc, clean up and start a fresh one
       if (!player.gameContainer || !player.gameContainer.parentNode) {
         cancelAnimationFrame(raf);
         canvas.remove();
         window.removeEventListener('resize', resize);
-        document.removeEventListener('mousemove', onMove);
-        document.removeEventListener('keydown', onKey);
+        setTimeout(loadGame, 1000);
         return;
       }
       raf = requestAnimationFrame(frame);
       var dt = Math.min(0.05, (now - last) / 1000);
       last = now;
 
-      if (!gameOver) {
+      if (gameOver) {
+        // While the ship is destroyed: no flying or shooting, then restart
+        player.keysPressed = {};
+        player.bullets.length = 0;
+        player.vel.x = 0; player.vel.y = 0;
+        restartIn -= dt;
+        if (restartIn <= 0) reset();
+      } else {
         elapsed += dt;
         waveFlash = Math.max(0, waveFlash - dt);
         // It never stops: rocks get faster, come more often, and arrive in
@@ -205,8 +221,8 @@
 
         for (var i = rocks.length - 1; i >= 0; i--) {
           var a = rocks[i], max = SIZES[a.size].speed * difficulty;
-          // Steer toward the cursor
-          var dx = mouse.x - a.x, dy = mouse.y - a.y, d = Math.hypot(dx, dy) || 1;
+          // Steer toward the ship
+          var dx = ship.x - a.x, dy = ship.y - a.y, d = Math.hypot(dx, dy) || 1;
           a.vx += dx / d * max * 1.4 * dt;
           a.vy += dy / d * max * 1.4 * dt;
           var sp = Math.hypot(a.vx, a.vy);
@@ -228,11 +244,9 @@
           }
           if (hit) { breakRock(i, true); continue; }
 
-          // Reached the cursor? One hit and you're dead
-          if (d < a.r + 6) {
-            gameOver = true;
-            burst(mouse.x, mouse.y, 60, '#d22');
-            for (var k = rocks.length - 1; k >= 0; k--) breakRock(k, false);
+          // Hit the ship? One hit and you're dead
+          if (d < a.r + SHIP_RADIUS) {
+            die();
             break; // all rocks are gone, stop looping over them
           }
         }
@@ -294,19 +308,6 @@
       });
       ctx.globalAlpha = 1;
 
-      // Target ring around the cursor
-      if (!gameOver) {
-        ctx.strokeStyle = 'rgba(210,30,30,0.7)';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(mouse.x, mouse.y, 14, 0, Math.PI * 2);
-        ctx.moveTo(mouse.x - 20, mouse.y); ctx.lineTo(mouse.x - 8, mouse.y);
-        ctx.moveTo(mouse.x + 8, mouse.y);  ctx.lineTo(mouse.x + 20, mouse.y);
-        ctx.moveTo(mouse.x, mouse.y - 20); ctx.lineTo(mouse.x, mouse.y - 8);
-        ctx.moveTo(mouse.x, mouse.y + 8);  ctx.lineTo(mouse.x, mouse.y + 20);
-        ctx.stroke();
-      }
-
       // Time survived and score (on a light panel so they show over anything)
       ctx.fillStyle = 'rgba(255,255,255,0.85)';
       ctx.fillRect(8, 8, 170, 64);
@@ -335,7 +336,7 @@
         ctx.globalAlpha = Math.min(1, 4 - elapsed);
         ctx.textAlign = 'center';
         ctx.font = 'bold 26px Arial, sans-serif';
-        var tip = 'Protect your cursor! One hit and you’re dead.';
+        var tip = 'Arrows/WASD to fly, Space to shoot. Don’t let the asteroids hit your ship!';
         var tw = ctx.measureText(tip).width;
         ctx.fillStyle = 'rgba(255,255,255,0.85)';
         ctx.fillRect(W / 2 - tw / 2 - 14, 16, tw + 28, 42);
@@ -356,7 +357,7 @@
         ctx.font = 'bold 22px Arial, sans-serif';
         ctx.fillText('You survived ' + fmtTime(elapsed) + '   ·   Score: ' + score, W / 2, H / 2 + 22);
         ctx.font = '18px Arial, sans-serif';
-        ctx.fillText('Press Enter to play again', W / 2, H / 2 + 54);
+        ctx.fillText('Next round in ' + Math.max(1, Math.ceil(restartIn)) + '…', W / 2, H / 2 + 54);
       }
     }
 
@@ -367,16 +368,14 @@
   // Screenshot mode: if screenshot.png is in the repo, show it
   // and let bullets blast holes in it
   // ---------------------------------------------------------------
+  // When embedded (e.g. on Google Sites), the box only launches the pop-up
   var framed = window.self !== window.top;
-  var fsAllowed = document.fullscreenEnabled || document.webkitFullscreenEnabled;
-
-  // Show the right hint when embedded somewhere that blocks full screen
-  if (framed && !fsAllowed) {
+  if (framed) {
     document.getElementById('hint').textContent = '🚀 Click anywhere to play full screen';
   }
 
   var shot = null;
-  if (!(framed && !fsAllowed)) { // the embed itself just launches the pop-up
+  if (!framed) {
     var shotImg = new Image();
     shotImg.onload = function () { setupScreenshot(shotImg); };
     shotImg.src = 'screenshot.png?v=' + Date.now(); // always get the latest upload
@@ -432,37 +431,52 @@
   }
 
   document.addEventListener('click', function (e) {
-    if (started || e.target.closest('a')) return;
+    if (e.target.closest('a')) return;
 
-    // Embedded (e.g. Google Sites) and full screen is blocked:
-    // open a pop-up window covering the whole screen instead
-    if (framed && !fsAllowed) {
-      var w = screen.availWidth, h = screen.availHeight;
-      var popup = window.open(location.href, 'asteroids',
-        'popup=yes,width=' + w + ',height=' + h + ',left=0,top=0');
-      if (!popup) window.open(location.href, '_blank'); // pop-up blocked: fall back to a tab
+    // Embedded (e.g. Google Sites): always open a pop-up window covering
+    // the whole screen, where the game can go truly full screen
+    if (framed) {
+      var w = screen.availWidth, h = screen.availHeight, popup = null;
+      try {
+        popup = window.open(location.href, 'asteroids',
+          'popup=yes,width=' + w + ',height=' + h + ',left=0,top=0');
+        if (!popup) popup = window.open(location.href, '_blank'); // fall back to a tab
+      } catch (err) {}
+      if (!popup) {
+        document.getElementById('hint').textContent =
+          '⚠️ The pop-up was blocked. Allow pop-ups for this site, then click again.';
+      }
       return;
     }
 
+    goFullScreen();
+  });
+
+  // Browsers only allow full screen after a key press or click,
+  // so the first one switches to full screen
+  var askedFullScreen = false;
+  function goFullScreen() {
+    if (framed || askedFullScreen) return;
+    if (document.fullscreenElement || document.webkitFullscreenElement) return;
+    askedFullScreen = true;
+    var el = document.documentElement;
+    var req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (req) { try { var p = req.call(el); if (p && p.catch) p.catch(function () {}); } catch (err) {} }
+  }
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') goFullScreen();
+  });
+
+  // Start right away (except inside the Google Sites box, which just launches the pop-up)
+  function startPlaying() {
+    if (started) return;
     started = true;
     document.documentElement.classList.add('playing');
     document.getElementById('stage').classList.add('playing');
     document.getElementById('hint').textContent = 'Go!';
-
-    var el = document.documentElement;
-    var req = el.requestFullscreen || el.webkitRequestFullscreen;
-    if (req) {
-      try {
-        var p = req.call(el);
-        if (p && p.then) {
-          // Load the game once full screen is active so it fills the screen
-          p.then(function () { setTimeout(loadGame, 150); }, loadGame);
-          return;
-        }
-      } catch (err) {}
-    }
     loadGame();
-  });
+  }
+  if (!framed) startPlaying();
 </script>
 </body>
 </html>
