@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Destroy This Page!</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #fff; }
+  #stage {
+    min-height: 100vh;
+    box-sizing: border-box;
+    padding: 24px;
+    font-family: Arial, sans-serif;
+    text-align: center;
+    cursor: pointer;
+  }
+  #stage.playing { cursor: default; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <h1>Destroy This Page!</h1>
+  <p id="hint" style="font-size: 20px;">🚀 Click anywhere to start</p>
+  <p>Fly with the arrow keys (or WASD) and shoot with space.</p>
+  <p>Press B to highlight what you can blow up. Press Esc to exit full screen.</p>
+
+  <h2>Target practice</h2>
+  <p>Every word and heading on this page is fair game.</p>
+  <p>Edit this text to put whatever you want people to blast apart.</p>
+
+  <p style="font-size: 12px; color: #888; margin-top: 32px;">
+    Asteroids game by <a href="http://kickassapp.com" target="_blank">Kick Ass / Rootof Creations</a>
+  </p>
+</div>
+
+<script>
+  var started = false;
+
+  function loadGame() {
+    var s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/gh/producthunt/asteroids/asteroids.js';
+    document.body.appendChild(s);
+  }
+
+  document.addEventListener('click', function (e) {
+    if (started || e.target.closest('a')) return;
+    started = true;
+    document.getElementById('stage').classList.add('playing');
+    document.getElementById('hint').textContent = 'Go!';
+
+    var el = document.documentElement;
+    var req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (req) {
+      try {
+        var p = req.call(el);
+        if (p && p.then) {
+          // Load the game once full screen is active so it fills the screen
+          p.then(function () { setTimeout(loadGame, 150); }, loadGame);
+          return;
+        }
+      } catch (err) {}
+    }
+    loadGame();
+  });
+</script>
+</body>
+</html>
