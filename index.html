@@ -78,7 +78,7 @@
   <p id="hint" style="font-size: 20px;">🚀 Click anywhere to start</p>
   <p>Fly with the arrow keys (or WASD) and shoot with space.</p>
   <p>Asteroids will hunt your ship. Shoot them before they reach it! One hit and you're dead, and they keep coming faster and in bigger groups.</p>
-  <p>The game restarts by itself after you die. Press B to highlight what you can blow up.</p>
+  <p>After you die, press any key to play again. Press B to highlight what you can blow up.</p>
 
   <h2>Target practice</h2>
   <p>Every word and heading on this page is fair game.</p>
@@ -151,37 +151,47 @@
     // The asteroids' target: the ship you fly
     var ship = player.pos;
     var SHIP_RADIUS = 12;
-    var RESTART_DELAY = 3; // seconds between dying and the next round
+    var KEY_DELAY = 0.8; // seconds after dying before a key press restarts (avoids accidental restarts)
 
-    // Big, medium, small: radius, top speed, points
+    // Big and medium: radius, top speed, points. Big ones split once into
+    // two medium ones; medium ones are destroyed outright.
     var SIZES = [
-      { r: 42, speed: 75,  points: 20 },
-      { r: 24, speed: 115, points: 50 },
-      { r: 13, speed: 165, points: 100 }
+      { r: 42, speed: 55, points: 20 },
+      { r: 24, speed: 80, points: 50 }
     ];
-    var MAX_ROCKS = 120; // safety limit so slower computers don't grind to a halt
+    var STEER = 0.6;      // how hard asteroids turn toward the ship (lower = lazier, more drifting)
+    var MAX_ROCKS = 60;   // safety limit
 
-    var rocks, bits = [], score, elapsed, nextSpawn, gameOver, perWave, waveFlash, restartIn;
+    var rocks, bits = [], score, elapsed, nextSpawn, gameOver, perWave, waveFlash, deadFor;
     function reset() {
-      rocks = [];
+      rocks = []; bits = [];
       score = 0; elapsed = 0;
-      nextSpawn = 1.5; gameOver = false;
-      perWave = 1; waveFlash = 0; restartIn = 0;
+      nextSpawn = 2.5; gameOver = false;
+      perWave = 1; waveFlash = 0; deadFor = 0;
       // Put the ship back in the middle, standing still, and show it again
       player.pos.x = W / 2; player.pos.y = H / 2;
       player.vel.x = 0; player.vel.y = 0;
       player.canvas.style.visibility = 'visible';
+      canvas.style.visibility = 'visible';
     }
     reset();
 
     function die() {
       gameOver = true;
-      restartIn = RESTART_DELAY;
-      burst(ship.x, ship.y, 80, '#d22');
-      burst(ship.x, ship.y, 40, '#f90');
-      for (var k = rocks.length - 1; k >= 0; k--) breakRock(k, false);
-      player.canvas.style.visibility = 'hidden'; // the ship is destroyed
+      deadFor = 0;
+      rocks = []; bits = [];
+      // Show only the screenshot: hide the ship and the asteroid layer,
+      // and restore the screenshot to its undamaged state
+      player.canvas.style.visibility = 'hidden';
+      canvas.style.visibility = 'hidden';
+      if (shot && shot.repaint) shot.repaint();
     }
+
+    // When dead, any key starts a new round
+    function onKey() {
+      if (gameOver && deadFor >= KEY_DELAY) reset();
+    }
+    document.addEventListener('keydown', onKey);
 
     function fmtTime(s) {
       s = Math.floor(s);
@@ -219,11 +229,11 @@
       burst(a.x, a.y, 10 + a.r / 2, '#333');
       if (!byPlayer) return;
       score += SIZES[a.size].points;
-      if (a.size < SIZES.length - 1) {
-        // Split into two smaller rocks flying apart
+      if (a.size === 0) {
+        // Big rocks split into two medium rocks flying apart
         var sp = Math.hypot(a.vx, a.vy) || 50, ang = Math.atan2(a.vy, a.vx);
         for (var k = -1; k <= 1; k += 2) {
-          var na = ang + k * 0.9, ns = sp * 1.1;
+          var na = ang + k * 0.9, ns = sp;
           rocks.push(makeRock(a.size + 1, a.x, a.y, Math.cos(na) * ns, Math.sin(na) * ns));
         }
       }
@@ -236,6 +246,7 @@
         cancelAnimationFrame(raf);
         canvas.remove();
         window.removeEventListener('resize', resize);
+        document.removeEventListener('keydown', onKey);
         setTimeout(loadGame, 1000);
         return;
       }
@@ -244,32 +255,31 @@
       last = now;
 
       if (gameOver) {
-        // While the ship is destroyed: no flying or shooting, then restart
+        // While the ship is destroyed: no flying or shooting; wait for a key
         player.keysPressed = {};
         player.bullets.length = 0;
         player.vel.x = 0; player.vel.y = 0;
-        restartIn -= dt;
-        if (restartIn <= 0) reset();
+        deadFor += dt;
       } else {
         elapsed += dt;
         waveFlash = Math.max(0, waveFlash - dt);
-        // It never stops: rocks get faster, come more often, and arrive in
-        // bigger groups the longer you survive
-        var difficulty = Math.min(2.5, 1 + elapsed / 75);
-        var newPerWave = Math.min(6, 1 + Math.floor(elapsed / 40));
+        // It never stops, but ramps up gently: rocks get a bit faster,
+        // come more often, and arrive in slightly bigger groups over time
+        var difficulty = Math.min(1.8, 1 + elapsed / 120);
+        var newPerWave = Math.min(3, 1 + Math.floor(elapsed / 60));
         if (newPerWave > perWave) { perWave = newPerWave; waveFlash = 2; }
         nextSpawn -= dt;
         if (nextSpawn <= 0) {
           for (var s = 0; s < perWave && rocks.length < MAX_ROCKS; s++) spawnRock();
-          nextSpawn = Math.max(0.25, 2.4 / (1 + elapsed / 25));
+          nextSpawn = Math.max(0.8, 3.2 / (1 + elapsed / 40));
         }
 
         for (var i = rocks.length - 1; i >= 0; i--) {
           var a = rocks[i], max = SIZES[a.size].speed * difficulty;
           // Steer toward the ship
           var dx = ship.x - a.x, dy = ship.y - a.y, d = Math.hypot(dx, dy) || 1;
-          a.vx += dx / d * max * 1.4 * dt;
-          a.vy += dy / d * max * 1.4 * dt;
+          a.vx += dx / d * max * STEER * dt;
+          a.vy += dy / d * max * STEER * dt;
           var sp = Math.hypot(a.vx, a.vy);
           if (sp > max) { a.vx *= max / sp; a.vy *= max / sp; }
           a.x += a.vx * dt; a.y += a.vy * dt;
@@ -334,6 +344,7 @@
 
     function draw() {
       ctx.clearRect(0, 0, W, H);
+      if (gameOver) return; // dead: nothing but the screenshot
 
       // Rocks
       ctx.lineWidth = 2;
@@ -395,21 +406,6 @@
         ctx.fillText(tip, W / 2, 24);
         ctx.globalAlpha = 1;
       }
-
-      if (gameOver) {
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillStyle = 'rgba(255,255,255,0.75)';
-        ctx.fillRect(W / 2 - 260, H / 2 - 80, 520, 160);
-        ctx.fillStyle = '#d22';
-        ctx.font = 'bold 48px Arial, sans-serif';
-        ctx.fillText('GAME OVER', W / 2, H / 2 - 30);
-        ctx.fillStyle = '#222';
-        ctx.font = 'bold 22px Arial, sans-serif';
-        ctx.fillText('You survived ' + fmtTime(elapsed) + '   ·   Score: ' + score, W / 2, H / 2 + 22);
-        ctx.font = '18px Arial, sans-serif';
-        ctx.fillText('Next round in ' + Math.max(1, Math.ceil(restartIn)) + '…', W / 2, H / 2 + 54);
-      }
     }
 
     raf = requestAnimationFrame(frame);
@@ -451,6 +447,7 @@
       cx.drawImage(img, (W - dw) / 2, 0, dw, dh);
     }
     paint();
+    shot.repaint = paint; // used to restore the undamaged screenshot after dying
     window.addEventListener('resize', paint);
   }
 
