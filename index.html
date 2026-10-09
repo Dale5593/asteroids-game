@@ -112,15 +112,21 @@
       { r: 24, speed: 115, points: 50 },
       { r: 13, speed: 165, points: 100 }
     ];
-    var START_LIVES = 3;
+    var MAX_ROCKS = 120; // safety limit so slower computers don't grind to a halt
 
-    var rocks, bits, lives, score, elapsed, nextSpawn, hurtTimer, gameOver;
+    var rocks, bits, score, elapsed, nextSpawn, gameOver, perWave, waveFlash;
     function reset() {
       rocks = []; bits = [];
-      lives = START_LIVES; score = 0; elapsed = 0;
-      nextSpawn = 1.5; hurtTimer = 0; gameOver = false;
+      score = 0; elapsed = 0;
+      nextSpawn = 1.5; gameOver = false;
+      perWave = 1; waveFlash = 0;
     }
     reset();
+
+    function fmtTime(s) {
+      s = Math.floor(s);
+      return Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2);
+    }
 
     function makeRock(size, x, y, vx, vy) {
       var n = 9 + Math.floor(Math.random() * 4), shape = [];
