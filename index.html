@@ -22,6 +22,7 @@
   <h1>Destroy This Page!</h1>
   <p id="hint" style="font-size: 20px;">🚀 Click anywhere to start</p>
   <p>Fly with the arrow keys (or WASD) and shoot with space.</p>
+  <p>Asteroids will hunt your mouse cursor. Shoot them before they reach it! You have 3 lives.</p>
   <p>Press B to highlight what you can blow up. Press Esc to exit full screen.</p>
 
   <h2>Target practice</h2>
@@ -39,11 +40,278 @@
   function loadGame() {
     var s = document.createElement('script');
     s.src = 'https://cdn.jsdelivr.net/gh/producthunt/asteroids/asteroids.js';
+    s.onload = startCursorAsteroids;
     document.body.appendChild(s);
+  }
+
+  // ---------------------------------------------------------------
+  // Add-on: asteroids that hunt the mouse cursor unless you shoot them
+  // (an addition on top of the original Kick Ass Asteroids game)
+  // ---------------------------------------------------------------
+  function startCursorAsteroids() {
+    var players = window.ASTEROIDSPLAYERS;
+    if (!players || !players.length) return;
+    var player = players[players.length - 1];
+
+    var canvas = document.createElement('canvas');
+    canvas.className = 'ASTEROIDSYEAH'; // the game won't shoot its own layers
+    canvas.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:10001';
+    document.body.appendChild(canvas);
+    var ctx = canvas.getContext('2d');
+
+    var W, H;
+    function resize() {
+      var dpr = window.devicePixelRatio || 1;
+      W = window.innerWidth; H = window.innerHeight;
+      canvas.width = W * dpr; canvas.height = H * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    var mouse = { x: W / 2, y: H / 2 };
+    function onMove(e) { mouse.x = e.clientX; mouse.y = e.clientY; }
+    document.addEventListener('mousemove', onMove);
+
+    // Big, medium, small: radius, top speed, points
+    var SIZES = [
+      { r: 42, speed: 75,  points: 20 },
+      { r: 24, speed: 115, points: 50 },
+      { r: 13, speed: 165, points: 100 }
+    ];
+    var START_LIVES = 3;
+
+    var rocks, bits, lives, score, elapsed, nextSpawn, hurtTimer, gameOver;
+    function reset() {
+      rocks = []; bits = [];
+      lives = START_LIVES; score = 0; elapsed = 0;
+      nextSpawn = 1.5; hurtTimer = 0; gameOver = false;
+    }
+    reset();
+
+    function makeRock(size, x, y, vx, vy) {
+      var n = 9 + Math.floor(Math.random() * 4), shape = [];
+      for (var i = 0; i < n; i++) shape.push(0.72 + Math.random() * 0.4);
+      return { size: size, r: SIZES[size].r, x: x, y: y, vx: vx, vy: vy,
+               rot: Math.random() * 6.28, spin: (Math.random() - 0.5) * 2, shape: shape };
+    }
+
+    function spawnRock() {
+      var r = SIZES[0].r, side = Math.floor(Math.random() * 4), x, y;
+      if (side === 0) { x = Math.random() * W; y = -r; }
+      else if (side === 1) { x = W + r; y = Math.random() * H; }
+      else if (side === 2) { x = Math.random() * W; y = H + r; }
+      else { x = -r; y = Math.random() * H; }
+      var dx = mouse.x - x, dy = mouse.y - y, d = Math.hypot(dx, dy) || 1;
+      var v = SIZES[0].speed * 0.5;
+      rocks.push(makeRock(0, x, y, dx / d * v, dy / d * v));
+    }
+
+    function burst(x, y, count, color) {
+      for (var i = 0; i < count; i++) {
+        var a = Math.random() * 6.28, s = 60 + Math.random() * 220;
+        bits.push({ x: x, y: y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.6 + Math.random() * 0.4, color: color });
+      }
+    }
+
+    function breakRock(i, byPlayer) {
+      var a = rocks[i];
+      rocks.splice(i, 1);
+      burst(a.x, a.y, 10 + a.r / 2, '#333');
+      if (!byPlayer) return;
+      score += SIZES[a.size].points;
+      if (a.size < SIZES.length - 1) {
+        // Split into two smaller rocks flying apart
+        var sp = Math.hypot(a.vx, a.vy) || 50, ang = Math.atan2(a.vy, a.vx);
+        for (var k = -1; k <= 1; k += 2) {
+          var na = ang + k * 0.9, ns = sp * 1.1;
+          rocks.push(makeRock(a.size + 1, a.x, a.y, Math.cos(na) * ns, Math.sin(na) * ns));
+        }
+      }
+    }
+
+    function onKey(e) {
+      if (gameOver && (e.key === 'Enter' || e.keyCode === 13)) reset();
+    }
+    document.addEventListener('keydown', onKey);
+
+    var last = performance.now(), raf;
+    function frame(now) {
+      // Stop when the player quits the game with Esc
+      if (!player.gameContainer || !player.gameContainer.parentNode) {
+        cancelAnimationFrame(raf);
+        canvas.remove();
+        window.removeEventListener('resize', resize);
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('keydown', onKey);
+        return;
+      }
+      raf = requestAnimationFrame(frame);
+      var dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+
+      if (!gameOver) {
+        elapsed += dt;
+        hurtTimer = Math.max(0, hurtTimer - dt);
+        // Rocks come faster and more often the longer you survive
+        var difficulty = Math.min(2.2, 1 + elapsed / 90);
+        nextSpawn -= dt;
+        if (nextSpawn <= 0) {
+          spawnRock();
+          nextSpawn = Math.max(0.7, 2.6 - elapsed / 30);
+        }
+
+        for (var i = rocks.length - 1; i >= 0; i--) {
+          var a = rocks[i], max = SIZES[a.size].speed * difficulty;
+          // Steer toward the cursor
+          var dx = mouse.x - a.x, dy = mouse.y - a.y, d = Math.hypot(dx, dy) || 1;
+          a.vx += dx / d * max * 1.4 * dt;
+          a.vy += dy / d * max * 1.4 * dt;
+          var sp = Math.hypot(a.vx, a.vy);
+          if (sp > max) { a.vx *= max / sp; a.vy *= max / sp; }
+          a.x += a.vx * dt; a.y += a.vy * dt;
+          a.rot += a.spin * dt;
+
+          // Shot by the ship's bullets?
+          var hit = false, bullets = player.bullets || [];
+          for (var j = 0; j < bullets.length; j++) {
+            var b = bullets[j];
+            if (b._usedUp) continue;
+            if (Math.hypot(b.pos.x - a.x, b.pos.y - a.y) < a.r + 3) {
+              b._usedUp = true;
+              b.cameAlive = -1e15; // makes the game remove this bullet on its next tick
+              hit = true;
+              break;
+            }
+          }
+          if (hit) { breakRock(i, true); continue; }
+
+          // Reached the cursor?
+          if (hurtTimer === 0 && d < a.r + 6) {
+            lives--;
+            hurtTimer = 2;
+            breakRock(i, false);
+            burst(mouse.x, mouse.y, 25, '#d22');
+            if (lives <= 0) {
+              gameOver = true;
+              for (var k = rocks.length - 1; k >= 0; k--) breakRock(k, false);
+              break; // all rocks are gone, stop looping over them
+            }
+          }
+        }
+      }
+
+      // Explosion bits
+      for (var p = bits.length - 1; p >= 0; p--) {
+        var q = bits[p];
+        q.life -= dt;
+        if (q.life <= 0) { bits.splice(p, 1); continue; }
+        q.x += q.vx * dt; q.y += q.vy * dt;
+        q.vx *= 0.97; q.vy *= 0.97;
+      }
+
+      draw();
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+
+      // Rocks
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#333';
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      rocks.forEach(function (a) {
+        ctx.beginPath();
+        for (var i = 0; i < a.shape.length; i++) {
+          var ang = a.rot + i / a.shape.length * Math.PI * 2, rr = a.r * a.shape[i];
+          var px = a.x + Math.cos(ang) * rr, py = a.y + Math.sin(ang) * rr;
+          if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      });
+
+      // Bits
+      bits.forEach(function (q) {
+        ctx.globalAlpha = Math.min(1, q.life * 1.5);
+        ctx.fillStyle = q.color;
+        ctx.fillRect(q.x - 1.5, q.y - 1.5, 3, 3);
+      });
+      ctx.globalAlpha = 1;
+
+      // Target ring around the cursor (blinks after being hit)
+      if (!gameOver && (hurtTimer === 0 || Math.floor(hurtTimer * 8) % 2 === 0)) {
+        ctx.strokeStyle = hurtTimer ? '#d22' : 'rgba(210,30,30,0.7)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(mouse.x, mouse.y, 14, 0, Math.PI * 2);
+        ctx.moveTo(mouse.x - 20, mouse.y); ctx.lineTo(mouse.x - 8, mouse.y);
+        ctx.moveTo(mouse.x + 8, mouse.y);  ctx.lineTo(mouse.x + 20, mouse.y);
+        ctx.moveTo(mouse.x, mouse.y - 20); ctx.lineTo(mouse.x, mouse.y - 8);
+        ctx.moveTo(mouse.x, mouse.y + 8);  ctx.lineTo(mouse.x, mouse.y + 20);
+        ctx.stroke();
+      }
+
+      // Lives and score
+      ctx.font = 'bold 20px Arial, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillStyle = '#d22';
+      var hearts = '';
+      for (var i = 0; i < START_LIVES; i++) hearts += i < lives ? '♥ ' : '♡ ';
+      ctx.fillText(hearts, 16, 16);
+      ctx.fillStyle = '#222';
+      ctx.fillText('Score: ' + score, 16, 44);
+
+      // Opening tip
+      if (!gameOver && elapsed < 4) {
+        ctx.globalAlpha = Math.min(1, 4 - elapsed);
+        ctx.textAlign = 'center';
+        ctx.font = 'bold 26px Arial, sans-serif';
+        ctx.fillStyle = '#d22';
+        ctx.fillText('Protect your cursor! Shoot the asteroids before they reach it.', W / 2, 24);
+        ctx.globalAlpha = 1;
+      }
+
+      if (gameOver) {
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = 'rgba(255,255,255,0.75)';
+        ctx.fillRect(W / 2 - 260, H / 2 - 80, 520, 160);
+        ctx.fillStyle = '#d22';
+        ctx.font = 'bold 48px Arial, sans-serif';
+        ctx.fillText('GAME OVER', W / 2, H / 2 - 30);
+        ctx.fillStyle = '#222';
+        ctx.font = 'bold 22px Arial, sans-serif';
+        ctx.fillText('Score: ' + score + '   ·   Press Enter to play again', W / 2, H / 2 + 30);
+      }
+    }
+
+    raf = requestAnimationFrame(frame);
+  }
+
+  var framed = window.self !== window.top;
+  var fsAllowed = document.fullscreenEnabled || document.webkitFullscreenEnabled;
+
+  // Show the right hint when embedded somewhere that blocks full screen
+  if (framed && !fsAllowed) {
+    document.getElementById('hint').textContent = '🚀 Click anywhere to play full screen';
   }
 
   document.addEventListener('click', function (e) {
     if (started || e.target.closest('a')) return;
+
+    // Embedded (e.g. Google Sites) and full screen is blocked:
+    // open a pop-up window covering the whole screen instead
+    if (framed && !fsAllowed) {
+      var w = screen.availWidth, h = screen.availHeight;
+      var popup = window.open(location.href, 'asteroids',
+        'popup=yes,width=' + w + ',height=' + h + ',left=0,top=0');
+      if (!popup) window.open(location.href, '_blank'); // pop-up blocked: fall back to a tab
+      return;
+    }
+
     started = true;
     document.getElementById('stage').classList.add('playing');
     document.getElementById('hint').textContent = 'Go!';
